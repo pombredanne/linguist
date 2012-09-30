@@ -1,21 +1,16 @@
+require 'linguist/generated'
 require 'linguist/language'
-require 'linguist/mime'
-require 'linguist/pathname'
 
+require 'charlock_holmes'
 require 'escape_utils'
+require 'mime/types'
+require 'pygments'
 require 'yaml'
 
 module Linguist
   # BlobHelper is a mixin for Blobish classes that respond to "name",
   # "data" and "size" such as Grit::Blob.
   module BlobHelper
-    # Internal: Get a Pathname wrapper for Blob#name
-    #
-    # Returns a Pathname.
-    def pathname
-      Pathname.new(name || "")
-    end
-
     # Public: Get the extname of the path
     #
     # Examples
@@ -25,7 +20,23 @@ module Linguist
     #
     # Returns a String
     def extname
-      pathname.extname
+      File.extname(name.to_s)
+    end
+
+    # Internal: Lookup mime type for extension.
+    #
+    # Returns a MIME::Type
+    def _mime_type
+      if defined? @_mime_type
+        @_mime_type
+      else
+        guesses = ::MIME::Types.type_for(extname.to_s)
+
+        # Prefer text mime types over binary
+        @_mime_type = guesses.detect { |type| type.ascii? } ||
+          # Otherwise use the first guess
+          guesses.first
+      end
     end
 
     # Public: Get the actual blob mime type
@@ -37,7 +48,14 @@ module Linguist
     #
     # Returns a mime type String.
     def mime_type
-      @mime_type ||= pathname.mime_type
+      _mime_type ? _mime_type.to_s : 'text/plain'
+    end
+
+    # Internal: Is the blob binary according to its mime type
+    #
+    # Return true or false
+    def binary_mime_type?
+      _mime_type ? _mime_type.binary? : false
     end
 
     # Public: Get the Content-Type header value
@@ -51,7 +69,8 @@ module Linguist
     #
     # Returns a content type String.
     def content_type
-      pathname.content_type
+      @content_type ||= (binary_mime_type? || binary?) ? mime_type :
+        (encoding ? "text/plain; charset=#{encoding.downcase}" : "text/plain")
     end
 
     # Public: Get the Content-Disposition header value
@@ -65,16 +84,48 @@ module Linguist
     def disposition
       if text? || image?
         'inline'
+      elsif name.nil?
+        "attachment"
       else
-        "attachment; filename=#{EscapeUtils.escape_url(pathname.basename)}"
+        "attachment; filename=#{EscapeUtils.escape_url(File.basename(name))}"
       end
+    end
+
+    def encoding
+      if hash = detect_encoding
+        hash[:encoding]
+      end
+    end
+
+    # Try to guess the encoding
+    #
+    # Returns: a Hash, with :encoding, :confidence, :type
+    #          this will return nil if an error occurred during detection or
+    #          no valid encoding could be found
+    def detect_encoding
+      @detect_encoding ||= CharlockHolmes::EncodingDetector.new.detect(data) if data
     end
 
     # Public: Is the blob binary?
     #
     # Return true or false
     def binary?
-      pathname.binary?
+      # Large blobs aren't even loaded into memory
+      if data.nil?
+        true
+
+      # Treat blank files as text
+      elsif data == ""
+        false
+
+      # Charlock doesn't know what to think
+      elsif encoding.nil?
+        true
+
+      # If Charlock says its binary
+      else
+        detect_encoding[:type] == :binary
+      end
     end
 
     # Public: Is the blob text?
@@ -100,13 +151,36 @@ module Linguist
       size.to_i > MEGABYTE
     end
 
+    # Public: Is the blob safe to colorize?
+    #
+    # We use Pygments.rb for syntax highlighting blobs, which
+    # has some quirks and also is essentially 'un-killable' via
+    # normal timeout.  To workaround this we try to
+    # carefully handling Pygments.rb anything it can't handle.
+    #
+    # Return true or false
+    def safe_to_colorize?
+      !large? && text? && !high_ratio_of_long_lines?
+    end
+
+    # Internal: Does the blob have a ratio of long lines?
+    #
+    # These types of files are usually going to make Pygments.rb
+    # angry if we try to colorize them.
+    #
+    # Return true or false
+    def high_ratio_of_long_lines?
+      return false if loc == 0
+      size / loc > 5000
+    end
+
     # Public: Is the blob viewable?
     #
     # Non-viewable blobs will just show a "View Raw" link
     #
     # Return true or false
     def viewable?
-      text? && !large?
+      !large? && text?
     end
 
     vendored_paths = YAML.load_file(File.expand_path("../vendor.yml", __FILE__))
@@ -130,7 +204,31 @@ module Linguist
     #
     # Returns an Array of lines
     def lines
-      @lines ||= (viewable? && data) ? data.split("\n", -1) : []
+      @lines ||=
+        if viewable? && data
+          data.split(line_split_character, -1)
+        else
+          []
+        end
+    end
+
+    # Character used to split lines. This is almost always "\n" except when Mac
+    # Format is detected in which case it's "\r".
+    #
+    # Returns a split pattern string.
+    def line_split_character
+      @line_split_character ||= (mac_format?? "\r" : "\n")
+    end
+
+    # Public: Is the data in ** Mac Format **. This format uses \r (0x0d) characters
+    # for line ends and does not include a \n (0x0a).
+    #
+    # Returns true when mac format is detected.
+    def mac_format?
+      return if !viewable?
+      if pos = data[0, 4096].index("\r")
+        data[pos + 1] != ?\n
+      end
     end
 
     # Public: Get number of lines of code
@@ -151,129 +249,16 @@ module Linguist
       lines.grep(/\S/).size
     end
 
-    # Internal: Compute average line length.
-    #
-    # Returns Integer.
-    def average_line_length
-      if lines.any?
-        lines.inject(0) { |n, l| n += l.length } / lines.length
-      else
-        0
-      end
-    end
-
     # Public: Is the blob a generated file?
     #
     # Generated source code is supressed in diffs and is ignored by
     # language statistics.
     #
-    # Requires Blob#data
-    #
-    # Includes:
-    # - XCode project XML files
-    # - Visual Studio project XNL files
-    # - Minified JavaScript
-    #
-    # Please add additional test coverage to
-    # `test/test_blob.rb#test_generated` if you make any changes.
+    # May load Blob#data
     #
     # Return true or false
     def generated?
-      if xcode_project_file? || visual_studio_project_file?
-        true
-      elsif generated_coffeescript? || minified_javascript? || generated_net_docfile?
-        true
-      else
-        false
-      end
-    end
-
-    # Internal: Is the blob an XCode project file?
-    #
-    # Generated if the file extension is an XCode project
-    # file extension.
-    #
-    # Returns true of false.
-    def xcode_project_file?
-      ['.xib', '.nib', '.pbxproj', '.xcworkspacedata', '.xcuserstate'].include?(extname)
-    end
-
-    # Internal: Is the blob a Visual Studio project file?
-    #
-    # Generated if the file extension is a Visual Studio project
-    # file extension.
-    #
-    # Returns true of false.
-    def visual_studio_project_file?
-      ['.csproj', '.dbproj', '.fsproj', '.pyproj', '.rbproj', '.vbproj', '.vcxproj', '.wixproj', '.resx', '.sln', '.vdproj', '.isproj'].include?(extname)
-    end
-
-    # Internal: Is the blob minified JS?
-    #
-    # Consider JS minified if the average line length is
-    # greater then 100c.
-    #
-    # Returns true or false.
-    def minified_javascript?
-      return unless extname == '.js'
-      average_line_length > 100
-    end
-
-    # Internal: Is the blob JS generated by CoffeeScript?
-    #
-    # Requires Blob#data
-    #
-    # CoffeScript is meant to output JS that would be difficult to
-    # tell if it was generated or not. Look for a number of patterns
-    # outputed by the CS compiler.
-    #
-    # Return true or false
-    def generated_coffeescript?
-      return unless extname == '.js'
-
-      if lines[0] == '(function() {' &&     # First line is module closure opening
-          lines[-2] == '}).call(this);' &&  # Second to last line closes module closure
-          lines[-1] == ''                   # Last line is blank
-
-        score = 0
-
-        lines.each do |line|
-          if line =~ /var /
-            # Underscored temp vars are likely to be Coffee
-            score += 1 * line.gsub(/(_fn|_i|_len|_ref|_results)/).count
-
-            # bind and extend functions are very Coffee specific
-            score += 3 * line.gsub(/(__bind|__extends|__hasProp|__indexOf|__slice)/).count
-          end
-        end
-
-        # Require a score of 3. This is fairly arbitrary. Consider
-        # tweaking later.
-        score >= 3
-      else
-        false
-      end
-    end
-
-    # Internal: Is this a generated documentation file for a .NET assembly?
-    #
-    # Requires Blob#data
-    #
-    # .NET developers often check in the XML Intellisense file along with an
-    # assembly - however, these don't have a special extension, so we have to
-    # dig into the contents to determine if it's a docfile. Luckily, these files
-    # are extremely structured, so recognizing them is easy.
-    #
-    # Returns true or false
-    def generated_net_docfile?
-      return false unless extname == ".xml"
-      return false unless lines.count > 3
-
-      # .NET Docfiles always open with <doc> and their first tag is an
-      # <assembly> tag
-      return lines[1].include?("<doc>") &&
-        lines[2].include?("<assembly>") &&
-        lines[-2].include?("</doc>")
+      @_generated ||= Generated.generated?(name, lambda { data })
     end
 
     # Public: Should the blob be indexed for searching?
@@ -289,15 +274,17 @@ module Linguist
     #
     # Return true or false
     def indexable?
-      if binary?
+      if size > 100 * 1024
         false
+      elsif binary?
+        false
+      elsif extname == '.txt'
+        true
       elsif language.nil?
         false
       elsif !language.searchable?
         false
       elsif generated?
-        false
-      elsif size > 100 * 1024
         false
       else
         true
@@ -310,227 +297,47 @@ module Linguist
     #
     # Returns a Language or nil if none is detected
     def language
-      if defined? @language
-        @language
+      return @language if defined? @language
+
+      if defined?(@data) && @data.is_a?(String)
+        data = @data
       else
-        @language = guess_language
+        data = lambda { (binary_mime_type? || binary?) ? "" : self.data }
       end
-    end
 
-    # Internal: Guess language
-    #
-    # Please add additional test coverage to
-    # `test/test_blob.rb#test_language` if you make any changes.
-    #
-    # Returns a Language or nil
-    def guess_language
-      return if binary?
-
-      # Disambiguate between multiple language extensions
-      disambiguate_extension_language ||
-
-        # See if there is a Language for the extension
-        pathname.language ||
-
-        # Look for idioms in first line
-        first_line_language ||
-
-        # Try to detect Language from shebang line
-        shebang_language
+      @language = Language.detect(name.to_s, data, mode)
     end
 
     # Internal: Get the lexer of the blob.
     #
     # Returns a Lexer.
     def lexer
-      language ? language.lexer : Lexer['Text only']
-    end
-
-    # Internal: Disambiguates between multiple language extensions.
-    #
-    # Delegates to "guess_EXTENSION_language".
-    #
-    # Please add additional test coverage to
-    # `test/test_blob.rb#test_language` if you add another method.
-    #
-    # Returns a Language or nil.
-    def disambiguate_extension_language
-      if Language.ambiguous?(extname)
-        name = "guess_#{extname.sub(/^\./, '')}_language"
-        send(name) if respond_to?(name)
-      end
-    end
-
-    # Internal: Guess language of header files (.h).
-    #
-    # Returns a Language.
-    def guess_h_language
-      if lines.grep(/^@(interface|property|private|public|end)/).any?
-        Language['Objective-C']
-      elsif lines.grep(/^class |^\s+(public|protected|private):/).any?
-        Language['C++']
-      else
-        Language['C']
-      end
-    end
-
-    # Internal: Guess language of .m files.
-    #
-    # Objective-C heuristics:
-    # * Keywords
-    #
-    # Matlab heuristics:
-    # * Leading function keyword
-    # * "%" comments
-    #
-    # Returns a Language.
-    def guess_m_language
-      # Objective-C keywords
-      if lines.grep(/^#import|@(interface|implementation|property|synthesize|end)/).any?
-        Language['Objective-C']
-
-      # File function
-      elsif lines.first.to_s =~ /^function /
-        Language['Matlab']
-
-      # Matlab comment
-      elsif lines.grep(/^%/).any?
-        Language['Matlab']
-
-      # Fallback to Objective-C, don't want any Matlab false positives
-      else
-        Language['Objective-C']
-      end
-    end
-
-    # Internal: Guess language of .pl files
-    #
-    # The rules for disambiguation are:
-    #
-    # 1. Many perl files begin with a shebang
-    # 2. Most Prolog source files have a rule somewhere (marked by the :- operator)
-    # 3. Default to Perl, because it is more popular
-    #
-    # Returns a Language.
-    def guess_pl_language
-      if shebang_script == 'perl'
-        Language['Perl']
-      elsif lines.grep(/:-/).any?
-        Language['Prolog']
-      else
-        Language['Perl']
-      end
-    end
-
-    # Internal: Guess language of .r files.
-    #
-    # Returns a Language.
-    def guess_r_language
-      if lines.grep(/(rebol|(:\s+func|make\s+object!|^\s*context)\s*\[)/i).any?
-        Language['Rebol']
-      else
-        Language['R']
-      end
-    end
-
-    # Internal: Guess language from the first line.
-    #
-    # Look for leading "<?php"
-    #
-    # Returns a Language.
-    def first_line_language
-      # Fail fast if blob isn't viewable?
-      return unless viewable?
-
-      if lines.first.to_s =~ /^<\?php/
-        Language['PHP']
-      end
-    end
-
-    # Internal: Extract the script name from the shebang line
-    #
-    # Requires Blob#data
-    #
-    # Examples
-    #
-    #   '#!/usr/bin/ruby'
-    #   # => 'ruby'
-    #
-    #   '#!/usr/bin/env ruby'
-    #   # => 'ruby'
-    #
-    #   '#!/usr/bash/python2.4'
-    #   # => 'python'
-    #
-    # Please add additional test coverage to
-    # `test/test_blob.rb#test_shebang_script` if you make any changes.
-    #
-    # Returns a script name String or nil
-    def shebang_script
-      # Fail fast if blob isn't viewable?
-      return unless viewable?
-
-      if lines.any? && (match = lines[0].match(/(.+)\n?/)) && (bang = match[0]) =~ /^#!/
-        bang.sub!(/^#! /, '#!')
-        tokens = bang.split(' ')
-        pieces = tokens.first.split('/')
-        if pieces.size > 1
-          script = pieces.last
-        else
-          script = pieces.first.sub('#!', '')
-        end
-
-        script = script == 'env' ? tokens[1] : script
-
-        # python2.4 => python
-        if script =~ /((?:\d+\.?)+)/
-          script.sub! $1, ''
-        end
-
-        # Check for multiline shebang hacks that exec themselves
-        #
-        #   #!/bin/sh
-        #   exec foo "$0" "$@"
-        #
-        if script == 'sh' &&
-            lines[0...5].any? { |l| l.match(/exec (\w+).+\$0.+\$@/) }
-          script = $1
-        end
-
-        script
-      end
-    end
-
-    # Internal: Get Language for shebang script
-    #
-    # Returns the Language or nil
-    def shebang_language
-      if script = shebang_script
-        Language[script]
-      end
+      language ? language.lexer : Pygments::Lexer.find_by_name('Text only')
     end
 
     # Public: Highlight syntax of blob
     #
+    # options - A Hash of options (defaults to {})
+    #
     # Returns html String
-    def colorize
-      return if !text? || large?
-      lexer.colorize(data)
+    def colorize(options = {})
+      return unless safe_to_colorize?
+      options[:options] ||= {}
+      options[:options][:encoding] ||= encoding
+      lexer.highlight(data, options)
     end
 
     # Public: Highlight syntax of blob without the outer highlight div
     # wrapper.
     #
+    # options - A Hash of options (defaults to {})
+    #
     # Returns html String
-    def colorize_without_wrapper
-      return if !text? || large?
-      lexer.colorize_without_wrapper(data)
-    end
-
-    Language.overridden_extensions.each do |extension|
-      name = "guess_#{extension.sub(/^\./, '')}_language".to_sym
-      unless instance_methods.map(&:to_sym).include?(name)
-        warn "Language##{name} was not defined"
+    def colorize_without_wrapper(options = {})
+      if text = colorize(options)
+        text[%r{<div class="highlight"><pre>(.*?)</pre>\s*</div>}m, 1]
+      else
+        ''
       end
     end
   end

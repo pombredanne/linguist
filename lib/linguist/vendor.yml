@@ -10,7 +10,7 @@
 ## Vendor Conventions ##
 
 # Caches
-- cache
+- cache/
 
 # C deps
 #  https://github.com/joyent/node
@@ -18,17 +18,17 @@
 - ^tools/
 
 # Node depedencies
-- ^node_modules/
+- node_modules/
 
-# Rails vendor/
-- ^vendor/
+# Vendored depedencies
+- vendor/
 
 
 ## Commonly Bundled JavaScript frameworks ##
 
 # jQuery
 - (^|/)jquery([^.]*)(\.min)?\.js$
-- (^|/)jquery\-\d\.\d\.\d(\.min)?\.js$
+- (^|/)jquery\-\d\.\d(\.\d)?(\.min)?\.js$
 
 # Prototype
 - (^|/)prototype(.*)\.js$
@@ -56,15 +56,41 @@
 # WYS editors
 - (^|/)ckeditor\.js$
 - (^|/)tiny_mce([^.]*)\.js$
+- (^|/)tiny_mce/(langs|plugins|themes|utils)
 
+# MathJax
+- (^|/)MathJax/
 
 ## Python ##
 
 # Fabric
 - ^fabfile\.py$
 
+# WAF
+- ^waf$
+
 
 ## Obj-C ##
 
 # Sparkle
 - (^|/)Sparkle/
+
+## .NET ##
+
+# Visual Studio IntelliSense
+- -vsdoc\.js$
+
+# jQuery validation plugin (MS bundles this with asp.net mvc)
+- (^|/)jquery([^.]*)\.validate(\.min)?\.js$
+
+# Microsoft Ajax
+- (^|/)[Mm]icrosoft([Mm]vc)?([Aa]jax|[Vv]alidation)(\.debug)?\.js$
+
+# NuGet
+- ^[Pp]ackages/
+
+# ExtJS
+- (^|/)extjs/
+
+# Samples folders
+- ^[Ss]amples/
