@@ -15,11 +15,20 @@ module Linguist
     @index           = {}
     @name_index      = {}
     @alias_index     = {}
-    @extension_index = Hash.new { |h,k| h[k] = [] }
-    @filename_index  = Hash.new { |h,k| h[k] = [] }
+
+    @extension_index          = Hash.new { |h,k| h[k] = [] }
+    @filename_index           = Hash.new { |h,k| h[k] = [] }
+    @primary_extension_index  = {}
 
     # Valid Languages types
     TYPES = [:data, :markup, :programming]
+
+    # Names of non-programming languages that we will still detect
+    #
+    # Returns an array
+    def self.detectable_markup
+      ["AsciiDoc", "CSS", "Creole", "Less", "Markdown", "MediaWiki", "Org", "RDoc", "Sass", "Textile", "reStructuredText"]
+    end
 
     # Internal: Create a new Language object
     #
@@ -56,6 +65,12 @@ module Linguist
         @extension_index[extension] << language
       end
 
+      if @primary_extension_index.key?(language.primary_extension)
+        raise ArgumentError, "Duplicate primary extension: #{language.primary_extension}"
+      end
+
+      @primary_extension_index[language.primary_extension] = language
+
       language.filenames.each do |filename|
         @filename_index[filename] << language
       end
@@ -73,7 +88,7 @@ module Linguist
     #
     # Returns Language or nil.
     def self.detect(name, data, mode = nil)
-      # A bit of an elegant hack. If the file is exectable but extensionless,
+      # A bit of an elegant hack. If the file is executable but extensionless,
       # append a "magic" extension so it can be classified with other
       # languages that have shebang scripts.
       if File.extname(name).empty? && mode && (mode.to_i(8) & 05) == 05
@@ -141,7 +156,10 @@ module Linguist
     # Returns all matching Languages or [] if none were found.
     def self.find_by_filename(filename)
       basename, extname = File.basename(filename), File.extname(filename)
-      @filename_index[basename] + @extension_index[extname]
+      langs = [@primary_extension_index[extname]] +
+              @filename_index[basename] +
+              @extension_index[extname]
+      langs.compact.uniq
     end
 
     # Public: Look up Language by its name or lexer.
@@ -222,6 +240,7 @@ module Linguist
         raise(ArgumentError, "#{@name} is missing lexer")
 
       @ace_mode = attributes[:ace_mode]
+      @wrap = attributes[:wrap] || false
 
       # Set legacy search term
       @search_term = attributes[:search_term] || default_alias_name
@@ -312,6 +331,11 @@ module Linguist
     # Returns a String name or nil
     attr_reader :ace_mode
 
+    # Public: Should language lines be wrapped
+    #
+    # Returns true or false
+    attr_reader :wrap
+
     # Public: Get extensions
     #
     # Examples
@@ -323,7 +347,7 @@ module Linguist
 
     # Deprecated: Get primary extension
     #
-    # Defaults to the first extension but can be overriden
+    # Defaults to the first extension but can be overridden
     # in the languages.yml.
     #
     # The primary extension can not be nil. Tests should verify this.
@@ -439,8 +463,6 @@ module Linguist
       extnames.each do |extname|
         if !options['extensions'].include?(extname)
           options['extensions'] << extname
-        else
-          warn "#{name} #{extname.inspect} is already defined in samples/. Remove from languages.yml."
         end
       end
     end
@@ -449,8 +471,6 @@ module Linguist
       fns.each do |filename|
         if !options['filenames'].include?(filename)
           options['filenames'] << filename
-        else
-          warn "#{name} #{filename.inspect} is already defined in samples/. Remove from languages.yml."
         end
       end
     end
@@ -462,6 +482,7 @@ module Linguist
       :aliases           => options['aliases'],
       :lexer             => options['lexer'],
       :ace_mode          => options['ace_mode'],
+      :wrap              => options['wrap'],
       :group_name        => options['group'],
       :searchable        => options.key?('searchable') ? options['searchable'] : true,
       :search_term       => options['search_term'],

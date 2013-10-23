@@ -67,14 +67,14 @@ module Linguist
       return if @computed_stats
 
       @enum.each do |blob|
-        # Skip binary file extensions
-        next if blob.binary_mime_type?
+        # Skip files that are likely binary
+        next if blob.likely_binary?
 
         # Skip vendored or generated blobs
         next if blob.vendored? || blob.generated? || blob.language.nil?
 
-        # Only include programming languages
-        if blob.language.type == :programming
+        # Only include programming languages and acceptable markup languages
+        if blob.language.type == :programming || Language.detectable_markup.include?(blob.language.name)
           @sizes[blob.language.group] += blob.size
         end
       end

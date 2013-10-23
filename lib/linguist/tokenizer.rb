@@ -32,7 +32,8 @@ module Linguist
       ['/*', '*/'],    # C
       ['<!--', '-->'], # XML
       ['{-', '-}'],    # Haskell
-      ['(*', '*)']     # Coq
+      ['(*', '*)'],    # Coq
+      ['"""', '"""']   # Python
     ]
 
     START_SINGLE_LINE_COMMENT =  Regexp.compile(SINGLE_LINE_COMMENTS.map { |c|
@@ -138,7 +139,7 @@ module Linguist
           s.scan(/\s+/)
           script = s.scan(/\S+/)
         end
-        script = script[/[^\d]+/, 0]
+        script = script[/[^\d]+/, 0] if script
         return script
       end
 
