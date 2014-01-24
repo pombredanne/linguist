@@ -27,11 +27,18 @@
 # Node dependencies
 - node_modules/
 
+# Bower Components
+- bower_components/
+
 # Erlang bundles
 - ^rebar$
 
 # Bootstrap minified css and js
-- (^|/)bootstrap([^.]*)(\.min)\.(js|css)$
+- (^|/)bootstrap([^.]*)(\.min)?\.(js|css)$
+
+# Foundation css
+- foundation.min.css
+- foundation.css
 
 # Vendored dependencies
 - thirdparty/
@@ -55,6 +62,9 @@
 - (^|/)effects\.js$
 - (^|/)controls\.js$
 - (^|/)dragdrop\.js$
+
+# Typescript definition files
+- (.*?)\.d\.ts$
 
 # MooTools
 - (^|/)mootools([^.]*)\d+\.\d+.\d+([^.]*)\.js$
@@ -81,6 +91,9 @@
 - (^|/)shBrush([^.]*)\.js$
 - (^|/)shCore\.js$
 - (^|/)shLegacy\.js$
+
+# AngularJS
+- (^|/)angular([^.]*)(\.min)?\.js$
 
 ## Python ##
 
@@ -140,6 +153,7 @@
 # LICENSE, README, git config files
 - ^COPYING$
 - LICENSE$
+- License$
 - gitattributes$
 - gitignore$
 - gitmodules$

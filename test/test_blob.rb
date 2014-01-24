@@ -179,8 +179,14 @@ class TestBlob < Test::Unit::TestCase
     # TypeScript-generated JS
     # TODO
 
+    # Composer generated composer.lock file
+    assert blob("JSON/composer.lock").generated?
+
     # PEG.js-generated parsers
     assert blob("JavaScript/parser.js").generated?
+
+    # Generated PostScript
+    assert !blob("PostScript/sierpinski.ps").generated?
 
     # These examples are too basic to tell
     assert !blob("JavaScript/empty.js").generated?
@@ -217,6 +223,11 @@ class TestBlob < Test::Unit::TestCase
 
     # Node dependencies
     assert blob("node_modules/coffee-script/lib/coffee-script.js").vendored?
+
+    # Bower Components
+    assert blob("bower_components/custom/custom.js").vendored?
+    assert blob("app/bower_components/custom/custom.js").vendored?
+    assert blob("vendor/assets/bower_components/custom/custom.js").vendored?
 
     # Rails vendor/
     assert blob("vendor/plugins/will_paginate/lib/will_paginate.rb").vendored?
@@ -267,7 +278,6 @@ class TestBlob < Test::Unit::TestCase
     assert blob("ui/minified/jquery.effects.blind.min.js").vendored?
     assert blob("ui/minified/jquery.ui.accordion.min.js").vendored?
 
-
     # MooTools
     assert blob("public/javascripts/mootools-core-1.3.2-full-compat.js").vendored?
     assert blob("public/javascripts/mootools-core-1.3.2-full-compat-yc.js").vendored?
@@ -288,6 +298,10 @@ class TestBlob < Test::Unit::TestCase
     assert blob("public/javascripts/tiny_mce.js").vendored?
     assert blob("public/javascripts/tiny_mce_popup.js").vendored?
     assert blob("public/javascripts/tiny_mce_src.js").vendored?
+
+    # AngularJS
+    assert blob("public/javascripts/angular.js").vendored?
+    assert blob("public/javascripts/angular.min.js").vendored?
 
     # Fabric
     assert blob("fabfile.py").vendored?
@@ -320,7 +334,7 @@ class TestBlob < Test::Unit::TestCase
     # Test fixtures
     assert blob("test/fixtures/random.rkt").vendored?
     assert blob("Test/fixtures/random.rkt").vendored?
-    
+
     # Cordova/PhoneGap
     assert blob("cordova.js").vendored?
     assert blob("cordova.min.js").vendored?
