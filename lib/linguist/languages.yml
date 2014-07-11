@@ -89,7 +89,7 @@ Agda:
 
 Alloy:
   type: programming  # 'modeling' would be more appropiate
-  lexer: Text only
+  lexer: Alloy
   color: "#cc5c24"
   extensions:
   - .als
@@ -157,7 +157,6 @@ Assembly:
   - nasm
   extensions:
   - .asm
-  - .inc
 
 Augeas:
   type: programming
@@ -222,6 +221,8 @@ BlitzBasic:
   - .decls
 
 BlitzMax:
+  type: programming
+  color: "#cd6400"
   extensions:
   - .bmx
 
@@ -529,15 +530,6 @@ Dart:
   extensions:
   - .dart
 
-DCPU-16 ASM:
-  type: programming
-  lexer: dasm16
-  extensions:
-  - .dasm16
-  - .dasm
-  aliases:
-  - dasm16
-
 Diff:
   extensions:
   - .diff
@@ -744,12 +736,14 @@ GLSL:
   - .glsl
   - .fp
   - .frag
+  - .frg
   - .fshader
   - .geom
   - .glslv
   - .gshader
   - .shader
   - .vert
+  - .vrx
   - .vshader
 
 Genshi:
@@ -806,6 +800,12 @@ Gosu:
   color: "#82937f"
   extensions:
   - .gs
+
+Grace:
+  type: programming
+  lexer: Text only
+  extensions:
+  - .grace
 
 Grammatical Framework:
   type: programming
@@ -941,7 +941,7 @@ Hy:
 
 IDL:
   type: programming
-  lexer: Text only
+  lexer: IDL
   color: "#e3592c"
   extensions:
   - .pro
@@ -960,7 +960,7 @@ Inno Setup:
 
 Idris:
   type: programming
-  lexer: Text only
+  lexer: Idris
   extensions:
   - .idr
   - .lidr
@@ -998,6 +998,13 @@ Ioke:
   color: "#078193"
   extensions:
   - .ik
+
+Isabelle:
+  type: programming
+  lexer: Text only
+  color: "#fdcd00"
+  extensions:
+  - .thy
 
 J:
   type: programming
@@ -1088,6 +1095,8 @@ JavaScript:
   - .pac
   - .sjs
   - .ssjs
+  - .xsjs
+  - .xsjslib
   filenames:
   - Jakefile
   interpreters:
@@ -1286,6 +1295,8 @@ Mathematica:
   type: programming
   extensions:
   - .mathematica
+  - .m
+  - .nb
   lexer: Text only
 
 Matlab:
@@ -1392,6 +1403,19 @@ Nimrod:
   extensions:
   - .nim
   - .nimrod
+
+Nit:
+  type: programming
+  lexer: Text only
+  color: "#0d8921"
+  extensions:
+  - .nit
+
+Nix:
+  type: programming
+  lexer: Nix
+  extensions:
+  - .nix
 
 Nu:
   type: programming
@@ -1528,6 +1552,8 @@ PHP:
   - .phpt
   filenames:
   - Phakefile
+  interpreters:
+  - php
 
 Pan:
   type: programming
@@ -1602,7 +1628,7 @@ Perl6:
 Pike:
   type: programming
   color: "#066ab2"
-  lexer: C
+  lexer: Pike
   extensions:
   - .pike
   - .pmod
@@ -1699,6 +1725,7 @@ Python:
   - .gyp
   - .lmi
   - .pyde
+  - .pyp
   - .pyt
   - .pyw
   - .wsgi
@@ -1723,6 +1750,12 @@ QML:
   color: "#44a51c"
   extensions:
   - .qml
+
+QMake:
+  lexer: Text only
+  extensions:
+  - .pro
+  - .pri
 
 R:
   type: programming
@@ -1863,13 +1896,17 @@ Ruby:
   interpreters:
   - ruby
   filenames:
+  - .pryrc
   - Appraisals
   - Berksfile
   - Buildfile
   - Gemfile
   - Gemfile.lock
   - Guardfile
+  - Jarfile
+  - Mavenfile
   - Podfile
+  - Puppetfile
   - Thorfile
   - Vagrantfile
   - buildfile
@@ -2289,6 +2326,7 @@ XML:
   - .launch
   - .mxml
   - .nproj
+  - .nuspec
   - .osm
   - .plist
   - .pluginspec
@@ -2359,6 +2397,17 @@ XSLT:
   extensions:
   - .xslt
   - .xsl
+
+Xojo:
+  type: programming
+  lexer: VB.net
+  extensions:
+  - .xojo_code
+  - .xojo_menu
+  - .xojo_report
+  - .xojo_script
+  - .xojo_toolbar
+  - .xojo_window
 
 Xtend:
   type: programming
