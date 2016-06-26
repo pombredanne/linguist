@@ -11,6 +11,7 @@ require 'linguist/samples'
 require 'linguist/file_blob'
 require 'linguist/blob_helper'
 require 'linguist/strategy/filename'
+require 'linguist/strategy/modeline'
 require 'linguist/shebang'
 
 module Linguist
@@ -30,13 +31,6 @@ module Linguist
 
     # Valid Languages types
     TYPES = [:data, :markup, :programming, :prose]
-
-    # Names of non-programming languages that we will still detect
-    #
-    # Returns an array
-    def self.detectable_markup
-      ["CSS", "Less", "Sass", "SCSS", "Stylus", "TeX"]
-    end
 
     # Detect languages by a specific type
     #
@@ -79,7 +73,7 @@ module Linguist
           raise ArgumentError, "Extension is missing a '.': #{extension.inspect}"
         end
 
-        @extension_index[extension] << language
+        @extension_index[extension.downcase] << language
       end
 
       language.interpreters.each do |interpreter|
@@ -93,13 +87,6 @@ module Linguist
       language
     end
 
-    STRATEGIES = [
-      Linguist::Strategy::Filename,
-      Linguist::Shebang,
-      Linguist::Heuristics,
-      Linguist::Classifier
-    ]
-
     # Public: Detects the Language of the blob.
     #
     # blob - an object that includes the Linguist `BlobHelper` interface;
@@ -107,22 +94,8 @@ module Linguist
     #
     # Returns Language or nil.
     def self.detect(blob)
-      # Bail early if the blob is binary or empty.
-      return nil if blob.likely_binary? || blob.binary? || blob.empty?
-
-      # Call each strategy until one candidate is returned.
-      STRATEGIES.reduce([]) do |languages, strategy|
-        candidates = strategy.call(blob, languages)
-        if candidates.size == 1
-          return candidates.first
-        elsif candidates.size > 1
-          # More than one candidate was found, pass them to the next strategy.
-          candidates
-        else
-          # No candiates were found, pass on languages from the previous strategy.
-          languages
-        end
-      end.first
+      warn "[DEPRECATED] `Linguist::Language.detect` is deprecated. Use `Linguist.detect`. #{caller[0]}"
+      Linguist.detect(blob)
     end
 
     # Public: Get all Languages
@@ -143,7 +116,8 @@ module Linguist
     #
     # Returns the Language or nil if none was found.
     def self.find_by_name(name)
-      name && @name_index[name.downcase]
+      return nil if name.to_s.empty?
+      name && (@name_index[name.downcase] || @name_index[name.split(',').first.downcase])
     end
 
     # Public: Look up Language by one of its aliases.
@@ -155,9 +129,10 @@ module Linguist
     #   Language.find_by_alias('cpp')
     #   # => #<Language name="C++">
     #
-    # Returns the Lexer or nil if none was found.
+    # Returns the Language or nil if none was found.
     def self.find_by_alias(name)
-      name && @alias_index[name.downcase]
+      return nil if name.to_s.empty?
+      name && (@alias_index[name.downcase] || @alias_index[name.split(',').first.downcase])
     end
 
     # Public: Look up Languages by filename.
@@ -196,7 +171,7 @@ module Linguist
     # Returns all matching Languages or [] if none were found.
     def self.find_by_extension(extname)
       extname = ".#{extname}" unless extname.start_with?(".")
-      @extension_index[extname]
+      @extension_index[extname.downcase]
     end
 
     # DEPRECATED
@@ -219,7 +194,7 @@ module Linguist
     end
 
 
-    # Public: Look up Language by its name or lexer.
+    # Public: Look up Language by its name.
     #
     # name - The String name of the Language
     #
@@ -233,7 +208,8 @@ module Linguist
     #
     # Returns the Language or nil if none was found.
     def self.[](name)
-      name && @index[name.downcase]
+      return nil if name.to_s.empty?
+      name && (@index[name.downcase] || @index[name.split(',').first.downcase])
     end
 
     # Public: A List of popular languages
@@ -243,7 +219,7 @@ module Linguist
     #
     # This list is configured in "popular.yml".
     #
-    # Returns an Array of Lexers.
+    # Returns an Array of Languages.
     def self.popular
       @popular ||= all.select(&:popular?).sort_by { |lang| lang.name.downcase }
     end
@@ -255,7 +231,7 @@ module Linguist
     #
     # This list is created from all the languages not listed in "popular.yml".
     #
-    # Returns an Array of Lexers.
+    # Returns an Array of Languages.
     def self.unpopular
       @unpopular ||= all.select(&:unpopular?).sort_by { |lang| lang.name.downcase }
     end
@@ -375,11 +351,6 @@ module Linguist
     # Returns the name String
     attr_reader :search_term
 
-    # Public: Get Lexer
-    #
-    # Returns the Lexer
-    attr_reader :lexer
-
     # Public: Get the name of a TextMate-compatible scope
     #
     # Returns the scope
@@ -495,16 +466,6 @@ module Linguist
       @searchable
     end
 
-    # Public: Highlight syntax of text
-    #
-    # text    - String of code to be highlighted
-    # options - A Hash of options (defaults to {})
-    #
-    # Returns html String
-    def colorize(text, options = {})
-      lexer.highlight(text, options)
-    end
-
     # Public: Return name as String representation
     def to_s
       name
@@ -548,8 +509,8 @@ module Linguist
 
     if extnames = extensions[name]
       extnames.each do |extname|
-        if !options['extensions'].index { |x| x.end_with? extname }
-          warn "#{name} has a sample with extension (#{extname}) that isn't explicitly defined in languages.yml" unless extname == '.script!'
+        if !options['extensions'].index { |x| x.downcase.end_with? extname.downcase }
+          warn "#{name} has a sample with extension (#{extname.downcase}) that isn't explicitly defined in languages.yml"
           options['extensions'] << extname
         end
       end
@@ -580,7 +541,6 @@ module Linguist
       :color             => options['color'],
       :type              => options['type'],
       :aliases           => options['aliases'],
-      :lexer             => options['lexer'],
       :tm_scope          => options['tm_scope'],
       :ace_mode          => options['ace_mode'],
       :wrap              => options['wrap'],
